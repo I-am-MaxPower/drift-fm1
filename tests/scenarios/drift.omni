@@ -1,0 +1,99 @@
+# DRIFT: the drone pages, the pulse pages, a chord walk over the pulse, and what is saved
+wav drift.wav
+wait 300
+# FX: DRONE, TEXTURE, SOUND, round again
+tap FX
+expect view 1
+shot drone-off.png
+tap FX
+expect view 2
+tap FX
+expect view 9
+tap FX
+expect view 1
+# a chord held: the drone fades in on C, and follows to A minor
+key b1 down
+wait 3500
+expect drone_level >60
+expect dronenote0 36
+expect dronenote3 52
+shot drone.png
+key b1 up
+key b4 down
+wait 2500
+expect dronenote0 45
+expect dronenote3 48
+key b4 up
+wait 6000
+expect drone_level <2
+# FIXED on D: KNOB 1 to Fixed, KNOB 2 to D
+spin K1 1
+expect par16 2
+spin K2 2
+expect par17 2
+key b4 down
+wait 300
+expect dronenote0 38
+expect dronenote3 48
+key b4 up
+spin K1 -1
+expect par16 1
+wait 6000
+# SEQ: PULSE, LOW, MALLET, SHAKER, SWELL, RHYTHM, round again
+tap SEQ
+expect view 3
+tap SEQ
+expect view 4
+tap SEQ
+tap SEQ
+tap SEQ
+expect view 7
+tap SEQ
+expect view 8
+tap SEQ
+expect view 3
+shot pulse.png
+# PLAY: the pulse runs, the drone comes in with nothing held
+tap PLAY
+expect playing 1
+wait 4000
+expect drone_level >40
+shot pulse-playing.png
+# LOW: four hits over 9 steps, turned by 2
+tap SEQ
+expect view 4
+spin K1 1
+spin K2 1
+spin K3 2
+expect par27 4
+expect par28 9
+expect par29 2
+wait 1500
+shot lane-low.png
+# a slow strum over the pulse, on F and then G
+key b0 down
+strum 0 15 60
+wait 3000
+key b0 up
+key b2 down
+strum 15 0 60
+wait 3000
+key b2 up
+# the pages that keep FoMni's: rhythm and sound still work
+tap HOME
+expect view 0
+shot play.png
+tap PLAY
+expect playing 0
+wait 6000
+expect drone_level <2
+expect peak_db_max -0.1
+wavstop
+# what is saved comes back
+tap SAVE
+reboot
+wait 300
+expect par27 4
+expect par28 9
+expect par29 2
+expect par16 1

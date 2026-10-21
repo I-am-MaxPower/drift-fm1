@@ -1,0 +1,134 @@
+# DRIFT's cloud build: compiles the firmware with JieLi's toolchain (Linux only), runs the tests, builds the
+# browser version, and publishes the install page on this repository's GitHub Pages.
+#
+#   every push to main      -> a build: the .fwsc to download (Actions > the run > Artifacts), and the site
+#   a tag "v0.2"            -> the same, plus a GitHub Release with the .fwsc attached
+#   Actions > Run workflow  -> the same as a push, by hand
+#
+# One setting, once: Settings > Pages > Build and deployment > Source: "GitHub Actions". Without it the
+# firmware still builds (the artifact), only the site step fails.
+name: Build DRIFT
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # the release, on a tag
+  pages: write
+  id-token: write
+
+concurrency:
+  group: drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04          # x86-64 Linux: JieLi's toolchain runs natively, no Docker
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python packages
+        run: pip install Pillow
+
+      - name: Version
+        id: v
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="$(cat VERSION).$(( GITHUB_RUN_NUMBER % 100 ))"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "DRIFT $V"
+
+      - name: Point the screen reader's words at this repository's site
+        run: |
+          OWNER="$(printf %s "${{ github.repository_owner }}" | tr A-Z a-z)"
+          sed -i "s#^\# url: .*#\# url: https://${OWNER}.github.io/${{ github.event.repository.name }}/words/#" firmware/words.tsv
+          grep "^# url:" firmware/words.tsv
+
+      - name: Cache the JieLi toolchain and SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.jieli
+            ~/fw-AC79_AIoT_SDK
+          key: jieli-ac79-v1.2.1-${{ hashFiles('tools/get_toolchain.sh') }}
+
+      - name: JieLi toolchain (clang for pi32v2)
+        run: |
+          [ -x ~/.jieli/toolchain/pi32v2/bin/clang ] || sh tools/get_toolchain.sh ~/.jieli
+
+      - name: JieLi AC79 SDK (only the three files the package uses)
+        run: |
+          if [ ! -f ~/fw-AC79_AIoT_SDK/cpu/wl82/tools/uboot.boot ]; then
+            rm -rf ~/fw-AC79_AIoT_SDK
+            git clone --depth 1 --filter=blob:none --sparse --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+              https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK \
+            && git -C ~/fw-AC79_AIoT_SDK sparse-checkout set cpu/wl82/tools \
+            || { rm -rf ~/fw-AC79_AIoT_SDK; git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+                   https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK; }
+          fi
+          ls -l ~/fw-AC79_AIoT_SDK/cpu/wl82/tools/uboot.boot
+
+      - name: Build the firmware
+        env:
+          JIELI_TOOLCHAIN: /home/runner/.jieli/toolchain
+          AC79_SDK: /home/runner/fw-AC79_AIoT_SDK
+        run: ./build.sh --release "${{ steps.v.outputs.version }}"
+
+      - name: Tests (the instrument, the simulator, the update path)
+        env:
+          AC79_SDK: /home/runner/fw-AC79_AIoT_SDK
+        run: |
+          cp "build/drift-${{ steps.v.outputs.version }}.fwsc" build/omni.fwsc   # the tests look for this name
+          sh tests/run_tests.sh
+
+      - name: Firmware file
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-${{ steps.v.outputs.version }}
+          path: build/drift-${{ steps.v.outputs.version }}.fwsc
+
+      - name: Emscripten (for the browser version)
+        uses: mymindstorm/setup-emsdk@v14
+        continue-on-error: true
+
+      - name: The browser version
+        continue-on-error: true      # the site is made without it if this fails
+        run: |
+          git clone --depth 1 https://github.com/charlesvestal/fm1-reader.git ../fm1-reader || true
+          OM_VERSION="${{ steps.v.outputs.version }}" sh web/emu/build.sh
+
+      - name: The site (install page, browser version, download)
+        run: python3 tools/make_pages.py "build/drift-${{ steps.v.outputs.version }}.fwsc" "${{ steps.v.outputs.version }}" build/pages
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/pages
+
+      - name: Release (on a tag)
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/drift-${{ steps.v.outputs.version }}.fwsc
+
+  pages:
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
