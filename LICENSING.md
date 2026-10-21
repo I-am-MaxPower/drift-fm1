@@ -9,7 +9,7 @@ your recipients its complete corresponding source under the same licence.
 
 DRIFT (October 2026) is a modified version of FoMni-1. Changed: `firmware/src/dsp/omni.c`, `omni.h` (the drone
 and pulse parameters and hooks), `firmware/src/app/ui.c`, `app.h`, `project.c` (the new pages and DRIFT's own
-project format), `firmware/src/main.c` and `tools/build.py` (DRIFT's package identity, FM-1_7...),
+project format), `firmware/src/main.c` and `tools/build.py` (DRIFT's package identity, FM-1_5...),
 `tools/make_pages.py`, `firmware/words.tsv`, `host/`, `tests/`. New: `firmware/src/dsp/drift.c`,
 `tests/host/drift_test.c`, `tests/scenarios/drift.omni`, `.github/workflows/build.yml`. Same license:
 GPL-3.0-only.
